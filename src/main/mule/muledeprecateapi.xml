@@ -1,0 +1,90 @@
+<?xml version="1.0" encoding="UTF-8"?>
+
+<mule xmlns:http="http://www.mulesoft.org/schema/mule/http" xmlns="http://www.mulesoft.org/schema/mule/core"
+	xmlns:doc="http://www.mulesoft.org/schema/mule/documentation"
+	xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://www.mulesoft.org/schema/mule/core http://www.mulesoft.org/schema/mule/core/current/mule.xsd
+http://www.mulesoft.org/schema/mule/http http://www.mulesoft.org/schema/mule/http/current/mule-http.xsd">
+	<http:listener-config name="HTTP_Listener_config" doc:name="HTTP Listener config" doc:id="3eff0f86-14d2-44dd-86ec-fd69ea7998f3" >
+		<http:listener-connection host="0.0.0.0" port="8081" />
+	</http:listener-config>
+	<http:request-config name="HTTP_Request_configuration" doc:name="HTTP Request configuration" doc:id="c0ef8ed4-9463-4bec-be64-1791732dc306" >
+		<http:request-connection host="anypoint.mulesoft.com" protocol="HTTPS"/>
+	</http:request-config>
+	<flow name="muledeprecateapiFlow" doc:id="5a2cbf82-9617-4822-bae6-4bc94099d1a7" >
+		<http:listener doc:name="Listener" doc:id="f7c11e32-19cc-41c1-9218-3d61674b6954" config-ref="HTTP_Listener_config" path="/apideprecate"/>
+		<set-variable value="58aa60bfac09489d9bbed42086db7067" doc:name="Set Variable" doc:id="8d1162ca-4bc4-4d1b-bfb4-adce71702f8e" variableName="user_client_id"/>
+		<set-variable value="6C6077eE6E084C478a91c3b46E2c36c5" doc:name="Set Variable" doc:id="b3ca4865-89e2-44a4-aa54-977999623dd6" variableName="user_client_secret"/>
+		<http:request method="POST" doc:name="Request Authentication" doc:id="7f21716b-238b-45de-ac8b-49f4036ab190" config-ref="HTTP_Request_configuration" path="/accounts/api/v2/oauth2/token" target="authRespVar">
+			<http:body ><![CDATA[#[%dw 2.0 
+output application/json
+---
+{
+    "client_id": vars.user_client_id,
+    "client_secret": vars.user_client_secret,
+    "grant_type": "client_credentials"
+}]]]></http:body>
+		</http:request>
+		<set-variable value="20" doc:name="Set Variable" doc:id="ab3a8287-f78f-463f-96f0-0f4bb2159db9" variableName="limit"/>
+		<set-variable value="0" doc:name="Set Variable" doc:id="bcd48b13-5526-40fb-8305-55d041b37eff" variableName="offset"/>
+		<set-variable value="55bf2ad9-16b8-428f-9f36-fc687e5cc3d4" doc:name="Set Variable" doc:id="9b0ffe31-bccf-4871-a91a-12400f0b415e" variableName="organization_id"/>
+		<set-variable value="55765363-6940-42c1-9083-09ceeba33ce7" doc:name="Set Variable" doc:id="2dca1258-1ed9-4fbc-a30d-ff204b654c57" variableName="environment_id"/>
+		<http:request method="GET" doc:name="Request All APIs" doc:id="a8295991-12c4-492d-a202-040fe004f0b3" config-ref="HTTP_Request_configuration" path="/apimanager/api/v1/organizations/{organization_id}/environments/{environment_id}/apis?ascending=false&amp;limit={limit}&amp;offset={offset}&amp;sort=createdDate" target="totalCount" targetValue="#[payload.total]">
+			<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : "Bearer " ++ vars.authRespVar.access_token
+}]]]></http:headers>
+			<http:uri-params><![CDATA[#[output application/java
+---
+{
+	offset : vars.offset,
+	environment_id : vars.environment_id,
+	organization_id : vars.organization_id,
+	limit : vars.limit
+}]]]></http:uri-params>
+		</http:request>
+		<foreach doc:name="For Each" doc:id="fd2a02e4-13ad-4d74-b926-36f6acba44d4" collection="#[output application/java --- 1 to ceil(vars.totalCount/vars.limit)]">
+			<set-variable value="#[(vars.limit* (vars.counter-1))]" doc:name="Set Variable" doc:id="3e4c31ca-afb9-4f0d-b8df-297ca684bf57" variableName="offset"/>
+			<http:request method="GET" doc:name="Request All APIs" doc:id="7ad0c8ce-4f36-4a58-96a6-e43064a5042f" config-ref="HTTP_Request_configuration" path="/apimanager/api/v1/organizations/{organization_id}/environments/{environment_id}/apis?ascending=false&amp;limit={limit}&amp;offset={offset}&amp;sort=createdDate" target="assets" targetValue="#[payload.assets]">
+				<http:headers ><![CDATA[#[output application/java
+---
+{
+	"Authorization" : "Bearer " ++ vars.authRespVar.access_token
+}]]]></http:headers>
+				<http:uri-params ><![CDATA[#[output application/java
+---
+{
+	offset : vars.offset,
+	environment_id : vars.environment_id,
+	organization_id : vars.organization_id,
+	limit : vars.limit
+}]]]></http:uri-params>
+			</http:request>
+			<parallel-foreach doc:name="Parallel For Each" doc:id="c9232407-29d7-4959-a782-5b0507cfd0e9" collection="#[vars.assets]" maxConcurrency="10">
+				<set-variable value="#[payload.apis[0].id]" doc:name="Set Variable" doc:id="255496f2-6b8c-48cf-8c11-2da652e583e9" variableName="api_id"/>
+				<choice doc:name="Choice" doc:id="5752271d-bf47-4101-b802-2285d582aa19" >
+					<when expression='#[payload.apis[0].status == "unregistered" and payload.apis[0].activeContractsCount == 0]'>
+						<http:request method="DELETE" doc:name="delete unregisterd API" doc:id="2b0b8984-9fae-4251-83b3-a1cbb8f81659" config-ref="HTTP_Request_configuration" path="/apimanager/api/v1/organizations/{organization_id}/environments/{environment_id}/apis/{api_id}">
+				<http:headers><![CDATA[#[output application/java
+---
+{
+	"Authorization" : "Bearer " ++ vars.authRespVar.access_token
+}]]]></http:headers>
+				<http:uri-params><![CDATA[#[output application/java
+---
+{
+	api_id : vars.api_id,
+	environment_id : vars.environment_id,
+	organization_id : vars.organization_id
+}]]]></http:uri-params>
+			</http:request>
+						<logger level="INFO" doc:name="Logger" doc:id="892fc269-5153-45e3-9a3f-ff00c94d6f8c" message='#["API Deleted Successfully. API Id:" ++ vars.api_id]'/>
+					</when>
+					<otherwise >
+						<logger level="INFO" doc:name="Logger" doc:id="60a19a1f-2a3d-4a81-8be9-ef68dbf5dc23" message='#["API is Active " ++ vars.api_id ++ ". status is: "++ payload.apis[0].status ++ "and client count is: " ++ payload.apis[0].activeContractsCount]'/>
+					</otherwise>
+				</choice>
+			</parallel-foreach>
+		</foreach>
+	</flow>
+</mule>
