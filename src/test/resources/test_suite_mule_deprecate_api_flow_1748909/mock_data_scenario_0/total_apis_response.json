@@ -1,0 +1,24 @@
+{
+  "total": 2,
+  "limit": 20,
+  "assets": [
+    {
+      "apis": [
+        {
+          "id": "api-unreg-001",
+          "status": "unregistered",
+          "activeContractsCount": 0
+        }
+      ]
+    },
+    {
+      "apis": [
+        {
+          "id": "api-active-002",
+          "status": "active",
+          "activeContractsCount": 2
+        }
+      ]
+    }
+  ]
+}
